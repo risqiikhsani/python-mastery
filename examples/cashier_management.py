@@ -40,12 +40,16 @@ class Product(BaseModel):
 
     def is_in_stock(self) -> bool:
         return self.stock > 0
-
+    
+class Item(BaseModel):
+    name: str
+    amount: int
+    bought_price: float = 0.0
 
 class Buyer(BaseModel):
     name: str
     money: float
-    items_bought: list[str] = []
+    bought_items: list[Item] = []
 
     @model_validator(mode="after")
     def validate_money(self) -> "Buyer":
@@ -53,14 +57,17 @@ class Buyer(BaseModel):
             raise ValueError("money cannot be negative")
         return self
 
-    def list_items_bought(self) -> str:
-        if not self.items_bought:
+    def list_bought_items(self) -> str:
+        if not self.bought_items:
             return f"{self.name} haven't bought anything yet."
-        return f"{self.name} have bought: " + ", ".join(self.items_bought)
+        return f"{self.name} bought items: " + ", ".join(f"{item.amount} x {item.name}" for item in self.bought_items)
 
     def __repr__(self) -> str:
-        return f"Buyer(name={self.name!r}, money={self.money}, items={self.items_bought})"
+        return f"Buyer(name={self.name!r}, money={self.money}, items={self.bought_items})"
 
+class Cart(BaseModel):
+    buyer: Buyer
+    items: list[Item] = []
 
 class Store(BaseModel):
     name: str
@@ -95,25 +102,42 @@ class Store(BaseModel):
             del self.cashiers[employee_id]
 
     def purchase_product(
-        self, buyer: Buyer, product_id: str, quantity: int = 1, cashier: Cashier | None = None
+        self, cart: Cart, cashier: Cashier | None = None
     ) -> None:
+        buyer = cart.buyer
         if cashier:
             print(cashier.greet_customer(buyer.name))
-        if product_id not in self.products:
-            raise ValueError("Product not found")
-        product = self.products[product_id]
-        if not product.is_in_stock():
-            raise ValueError("Product is out of stock")
-        if quantity > product.stock:
-            raise ValueError(f"Requested quantity ({quantity}) exceeds available stock ({product.stock})")
-        total_cost = product.price * quantity
+            
+        # First pass to validate all items and calculate total cost
+        total_cost = 0.0
+        for item in cart.items:
+            product_id = item.name
+            quantity = item.amount
+            if product_id not in self.products:
+                raise ValueError(f"Product {product_id} not found")
+                
+            product = self.products[product_id]
+            if not product.is_in_stock():
+                raise ValueError(f"Product {product.name} is out of stock")
+            if quantity > product.stock:
+                raise ValueError(f"Requested quantity ({quantity}) for {product.name} exceeds available stock ({product.stock})")
+                
+            total_cost += product.price * quantity
+            
         if buyer.money < total_cost:
             raise ValueError("Insufficient funds")
+            
+        # Second pass to complete the transaction
         buyer.money -= total_cost
         self.add_balance(total_cost)
-        product.stock -= quantity
-        buyer.items_bought.append(product.name)
-        print(f"{buyer.name} bought {quantity} x {product.name} for ${total_cost:.2f}")
+        
+        for item in cart.items:
+            product_id = item.name
+            quantity = item.amount
+            product = self.products[product_id]
+            product.stock -= quantity
+            buyer.bought_items.append(Item(name=product.name, amount=quantity, bought_price=product.price))
+            print(f"{buyer.name} bought {quantity} x {product.name} for ${product.price * quantity:.2f}")
 
     def restock_product(self, product_id: str, quantity: int) -> None:
         if quantity <= 0:
@@ -142,20 +166,28 @@ def _create_store(
     )
 
 
-if __name__ == "__main__":
-    cashier_kevin = Cashier(name="Kevin", employee_id=101, shift="Morning")
-    cashier_alice = Cashier(name="Alice", employee_id=102, shift="Evening")
 
-    foods = Product(id="p1", name="Bread", price=2.5, stock=100)
-    drinks = Product(id="p2", name="Milk", price=1.5, stock=50)
-    store = _create_store(
-        name="SuperMart",
-        initial_balance=1000.0,
-        initial_products=[foods, drinks],
-        initial_cashiers=[cashier_kevin, cashier_alice],
-    )
+cashier_kevin = Cashier(name="Kevin", employee_id=101, shift="Morning")
+cashier_alice = Cashier(name="Alice", employee_id=102, shift="Evening")
 
-    buyer_john = Buyer(name="John", money=20.0)
-    print(buyer_john.list_items_bought())
-    store.purchase_product(buyer_john, product_id="p1", quantity=2, cashier=cashier_kevin)
-    print(buyer_john.list_items_bought())
+foods = Product(id="p1", name="Bread", price=2.5, stock=100)
+drinks = Product(id="p2", name="Milk", price=1.5, stock=50)
+store = _create_store(
+    name="SuperMart",
+    initial_balance=1000.0,
+    initial_products=[foods, drinks],
+    initial_cashiers=[cashier_kevin, cashier_alice],
+)
+
+buyer_john = Buyer(name="John", money=20.0)
+print(buyer_john.list_bought_items())
+
+johns_cart = Cart(
+    buyer=buyer_john,
+    items=[
+        Item(name="p1", amount=2),
+        Item(name="p2", amount=1)
+    ]
+)
+store.purchase_product(johns_cart, cashier=cashier_kevin)
+print(buyer_john.list_bought_items())

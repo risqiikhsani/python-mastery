@@ -6,8 +6,8 @@ Mastery Python - Run any topic file by uncommenting it below
 # Examples
 # =============================================================================
 # from examples.pydantic_validation import *
-from examples.banking_system import *
-
+# from examples.banking_system import *
+from examples.cashier_management import *
 
 # =============================================================================
 # OOP (oop)
