@@ -9,12 +9,13 @@ sql = SQLOrderRepository()
 memory = InMemoryOrderRepository()  # For testing purposes, you can switch to this repository
 product1 = Product(name="Laptop", price=999.99, description="A high-performance laptop.")
 product2 = Product(name="Smartphone", price=499.99, description="A latest model smartphone.")
+products = [product1, product2]
 order_service = OrderService(order_repository=sql)
 user_service = UserService(order_repository=sql)
 purchaser = User(name="Alice", email="alice@example.com")
 
 # create order
-new_order = order_service.create_order(products=[product1, product2], purchaser=purchaser)
+new_order = order_service.create_order(products=products, purchaser=purchaser)
 print(f"Created order with ID: {new_order.id} and total price: ${new_order.total_price():.2f} and purchaser: {new_order.purchaser}")
 
 # pay for order
